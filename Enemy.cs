@@ -63,7 +63,7 @@ namespace DodgerCS {
         /// </summary>
         public void StopMovement() {
             enemySpeed = 0;
-            position = new Vector2( position.X, position.Y - 1 );
+            position = new Vector2( position.X, position.Y );
         }
 
         public Vector2 Pos {

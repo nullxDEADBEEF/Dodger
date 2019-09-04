@@ -71,6 +71,10 @@ namespace DodgerCS {
             playerSpeed = 0;
         }
 
+        public void InitialMovement() {
+            playerSpeed = 200;
+        }
+
         public void Unload() {
             texture.Dispose();
             texture = null;
@@ -82,6 +86,7 @@ namespace DodgerCS {
 
         public Vector2 Pos {
             get {  return position; }
+            set {  position = value; }
         }
     }
 }

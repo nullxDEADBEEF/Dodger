@@ -8,6 +8,14 @@ using System;
 
 namespace DodgerCS {
     /// <summary>
+    /// Handle different game states
+    /// </summary>
+    enum GameState {
+        MainMenu,
+        Playing
+    }
+
+    /// <summary>
     /// This is the main type for your game.
     /// </summary>
     public class DodgerGame : Game {
@@ -20,6 +28,13 @@ namespace DodgerCS {
         private Song backgroundMusic;
         private Song gameOverMusic;
 
+        private Texture2D startButton;
+        private Texture2D exitButton;
+        private Vector2 startButtonPosition;
+        private Vector2 exitButtonPosition;
+        private Rectangle startButtonRect;
+        private Rectangle exitButtonRect;
+
         private List<Enemy> enemies;
         private Random random;
 
@@ -27,6 +42,12 @@ namespace DodgerCS {
         private int playerScore;
         private float lastEnemySpawn;
         private float timeInsideBackgroundMusic;
+        private int collisionCounter;
+        private bool startOfGame;
+
+        private KeyboardState currentKeyboardState;
+        private KeyboardState previousKeyboardState;
+        private GameState gameState;
 
         private const float enemySpeed = 0.15f;
         private const float BACKGROUND_MUSIC_DELAY_OFFSET = 2.0f;
@@ -40,8 +61,23 @@ namespace DodgerCS {
             playerScore = 0;
             lastEnemySpawn = 0.0f;
             timeInsideBackgroundMusic = 0.0f;
+            collisionCounter = 0;
 
             Content.RootDirectory = "Content";
+        }
+
+        private void RestartGame() {
+            playerScore = 0;
+            lastEnemySpawn = 0.0f;
+            timeInsideBackgroundMusic = 0.0f;
+            collisionCounter = 0;
+
+            enemies.Clear();
+            playerHit = false;
+
+            MediaPlayer.Play( backgroundMusic );
+            player.Pos = new Vector2( graphics.PreferredBackBufferWidth / 2, graphics.PreferredBackBufferHeight / 2 );
+            player.InitialMovement();
         }
 
         private void DrawScore( SpriteBatch spriteBatch ) {
@@ -58,6 +94,11 @@ namespace DodgerCS {
             enemies = new List<Enemy>();
             random = new Random();
             playerHit = false;
+            startOfGame = true;
+            gameState = GameState.MainMenu;
+            startButtonPosition = new Vector2( ( graphics.PreferredBackBufferWidth / 2 ) - 50, ( graphics.PreferredBackBufferHeight / 2 ) - 30 );
+            exitButtonPosition = new Vector2( ( graphics.PreferredBackBufferWidth / 2 ) - 50, ( graphics.PreferredBackBufferHeight / 2 ) - 5 );
+            IsMouseVisible = true;
 
             base.Initialize();
         }
@@ -73,15 +114,22 @@ namespace DodgerCS {
             // Load content to the game
             scoreFont = Content.Load<SpriteFont>( "../Content/Score" );
             enemyTexture = Content.Load<Texture2D>( "../Content/baddie" );
+            backgroundMusic = Content.Load<Song>( "../Content/background" );
+            gameOverMusic = Content.Load<Song>( "../Content/gameover" );
 
+            startButton = Content.Load<Texture2D>( "../Content/start" );
+            exitButton = Content.Load<Texture2D>( "../Content/exit" );
+
+            // NOTE: We put the initialization of the player and enemy here
+            // since we need to have the textures loaded in
             player = new Player( Content, new Vector2( graphics.PreferredBackBufferWidth / 2, graphics.PreferredBackBufferHeight / 2 ) );
             enemy = new Enemy( enemyTexture, new Vector2( random.Next( 1, graphics.PreferredBackBufferWidth ), -enemyTexture.Height ) );
             enemies.Add( enemy );
 
-            backgroundMusic = Content.Load<Song>( "../Content/background" );
-            gameOverMusic = Content.Load<Song>( "../Content/gameover" );
+            startButtonRect = new Rectangle( (int)startButtonPosition.X, (int)startButtonPosition.Y, startButton.Width, startButton.Height );
+            exitButtonRect = new Rectangle( (int)exitButtonPosition.X, (int)exitButtonPosition.Y, exitButton.Width, exitButton.Height );
+
             MediaPlayer.Volume = 0.1f;
-            MediaPlayer.Play( backgroundMusic );
         }
 
         /// <summary>
@@ -95,6 +143,8 @@ namespace DodgerCS {
             }
             gameOverMusic.Dispose();
             backgroundMusic.Dispose();
+            startButton.Dispose();
+            exitButton.Dispose();
         }
 
         /// <summary>
@@ -103,54 +153,81 @@ namespace DodgerCS {
         /// </summary>
         /// <param name="gameTime">Provides a snapshot of timing values.</param>
         protected override void Update(GameTime gameTime) {
-            if ( Keyboard.GetState().IsKeyDown( Keys.Escape ) ) {
-                Exit();
-            }
+            currentKeyboardState = Keyboard.GetState();
 
-            // Play background music again if time exceeds the song duration
-            timeInsideBackgroundMusic += (float)gameTime.ElapsedGameTime.TotalSeconds;
-            if ( timeInsideBackgroundMusic >= backgroundMusic.Duration.TotalSeconds - BACKGROUND_MUSIC_DELAY_OFFSET ) {
-                MediaPlayer.Play( backgroundMusic );
-                timeInsideBackgroundMusic = 0;
-            }
-
-            if ( lastEnemySpawn > enemySpeed && !playerHit ) {
-                Enemy enemy = new Enemy( enemyTexture, new Vector2( random.Next( 1, graphics.PreferredBackBufferWidth ), -enemyTexture.Height ) );
-                enemies.Add( enemy );
-                lastEnemySpawn = 0.0f;
-            }
-
-            // TODO: press key for restarting the game....
-
-            // Spawn an enemy if 0.15 seconds has passed
-            lastEnemySpawn += (float)gameTime.ElapsedGameTime.TotalSeconds;
-
-            // Update game entities
-            player.Update( graphics.PreferredBackBufferWidth,
-                           graphics.PreferredBackBufferHeight, gameTime );
-
-            for ( int i = 0; i < enemies.Count; i++ ) {
-                // if the enemy collided with the player
-                if ( enemies[i].Collision( player.CollisionRect ) ) {
-                    playerHit = true;
+            if ( gameState == GameState.Playing ) {
+                if ( currentKeyboardState.IsKeyDown( Keys.Escape ) ) {
                     MediaPlayer.Stop();
-                    MediaPlayer.Play( gameOverMusic );
-                    for ( int j = 0; j < enemies.Count; j++ ) {
-                        enemies[j].StopMovement();
-                    }
-                    player.StopMovement();
+                    gameState = GameState.MainMenu;
                 }
 
-                enemies[i].Update( graphics.PreferredBackBufferHeight, gameTime );
+                IsMouseVisible = false;
+                if ( currentKeyboardState.IsKeyUp ( Keys.R ) && previousKeyboardState.IsKeyDown( Keys.R ) ) {
+                    RestartGame();
+                }
 
-                if ( enemies[i].IsDead ) {
-                    playerScore += 1;
-                    enemies.RemoveAt( i );
-                    i--;
+                if ( startOfGame ) {
+                    MediaPlayer.Play( backgroundMusic );
+                    startOfGame = false;
+                }
+
+                // Play background music again if time exceeds the song duration
+                timeInsideBackgroundMusic += (float)gameTime.ElapsedGameTime.TotalSeconds;
+                if ( timeInsideBackgroundMusic >= backgroundMusic.Duration.TotalSeconds - BACKGROUND_MUSIC_DELAY_OFFSET ) {
+                    MediaPlayer.Play( backgroundMusic );
+                    timeInsideBackgroundMusic = 0;
+                }
+
+                if ( lastEnemySpawn > enemySpeed && !playerHit ) {
+                    Enemy enemy = new Enemy( enemyTexture, new Vector2( random.Next( 1, graphics.PreferredBackBufferWidth ), -enemyTexture.Height ) );
+                    enemies.Add( enemy );
+                    lastEnemySpawn = 0.0f;
+                }
+
+                // Spawn an enemy if 0.15 seconds has passed
+                lastEnemySpawn += (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+                // Update game entities
+                player.Update( graphics.PreferredBackBufferWidth, graphics.PreferredBackBufferHeight, gameTime );
+
+                for ( int i = 0; i < enemies.Count; i++ ) {
+                    enemies[i].Update( graphics.PreferredBackBufferHeight, gameTime );
+
+                    // if the enemy collided with the player
+                    if ( enemies[i].Collision( player.CollisionRect ) ) {
+                        if ( playerHit && collisionCounter == 1 ) {
+                            MediaPlayer.Stop();
+                            MediaPlayer.Play( gameOverMusic );
+                        }
+                        playerHit = true;
+                        collisionCounter += 1;
+                        for ( int j = 0; j < enemies.Count; j++ ) {
+                            enemies[j].StopMovement();
+                        }
+                        player.StopMovement();
+                    }
+
+                    if ( enemies[i].IsDead ) {
+                        playerScore += 1;
+                        enemies.RemoveAt( i );
+                        i--;
+                    }
                 }
             }
 
+            if ( gameState == GameState.MainMenu ) {
+                if ( startButtonRect.Contains( Mouse.GetState().Position ) && Mouse.GetState().LeftButton == ButtonState.Pressed ) {
+                    gameState = GameState.Playing;
+                }
+                
+                if ( exitButtonRect.Contains( Mouse.GetState().Position ) && Mouse.GetState().LeftButton == ButtonState.Pressed ) {
+                    Exit();
+                }
+            }
+            
             base.Update(gameTime);
+
+            previousKeyboardState = currentKeyboardState;
         }
 
         /// <summary>
@@ -161,12 +238,23 @@ namespace DodgerCS {
             GraphicsDevice.Clear( Color.Black );
 
             spriteBatch.Begin();
-            DrawScore( spriteBatch );
-            foreach ( Enemy enemy in enemies ) {
-                enemy.Render( spriteBatch );
+
+            if ( gameState == GameState.Playing ) {
+                spriteBatch.DrawString( scoreFont, "Press R to restart game", new Vector2( 0, 20 ), Color.White );
+                DrawScore( spriteBatch );
+                foreach ( Enemy enemy in enemies ) {
+                    enemy.Render( spriteBatch );
+                }
+
+                player.Render( spriteBatch );
             }
 
-            player.Render( spriteBatch );
+            if ( gameState == GameState.MainMenu ) {
+                IsMouseVisible = true;
+                spriteBatch.Draw( startButton, startButtonPosition, Color.White );
+                spriteBatch.Draw( exitButton, exitButtonPosition, Color.White );
+            }
+           
             spriteBatch.End();
 
             base.Draw(gameTime);
