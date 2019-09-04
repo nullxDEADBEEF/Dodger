@@ -49,7 +49,7 @@ namespace DodgerCS {
         private KeyboardState previousKeyboardState;
         private GameState gameState;
 
-        private const float enemySpeed = 0.15f;
+        private const float ENEMY_SPAWN_RATE = 0.15f;
         private const float BACKGROUND_MUSIC_DELAY_OFFSET = 2.0f;
 
         public DodgerGame() {
@@ -75,7 +75,6 @@ namespace DodgerCS {
             enemies.Clear();
             playerHit = false;
 
-            MediaPlayer.Play( backgroundMusic );
             player.Pos = new Vector2( graphics.PreferredBackBufferWidth / 2, graphics.PreferredBackBufferHeight / 2 );
             player.InitialMovement();
         }
@@ -159,11 +158,13 @@ namespace DodgerCS {
                 if ( currentKeyboardState.IsKeyDown( Keys.Escape ) ) {
                     MediaPlayer.Stop();
                     gameState = GameState.MainMenu;
+                    RestartGame();
                 }
 
                 IsMouseVisible = false;
                 if ( currentKeyboardState.IsKeyUp ( Keys.R ) && previousKeyboardState.IsKeyDown( Keys.R ) ) {
                     RestartGame();
+                    MediaPlayer.Play( backgroundMusic );
                 }
 
                 if ( startOfGame ) {
@@ -178,7 +179,7 @@ namespace DodgerCS {
                     timeInsideBackgroundMusic = 0;
                 }
 
-                if ( lastEnemySpawn > enemySpeed && !playerHit ) {
+                if ( lastEnemySpawn > ENEMY_SPAWN_RATE && !playerHit ) {
                     Enemy enemy = new Enemy( enemyTexture, new Vector2( random.Next( 1, graphics.PreferredBackBufferWidth ), -enemyTexture.Height ) );
                     enemies.Add( enemy );
                     lastEnemySpawn = 0.0f;
@@ -218,6 +219,7 @@ namespace DodgerCS {
             if ( gameState == GameState.MainMenu ) {
                 if ( startButtonRect.Contains( Mouse.GetState().Position ) && Mouse.GetState().LeftButton == ButtonState.Pressed ) {
                     gameState = GameState.Playing;
+                    startOfGame = true;
                 }
                 
                 if ( exitButtonRect.Contains( Mouse.GetState().Position ) && Mouse.GetState().LeftButton == ButtonState.Pressed ) {
